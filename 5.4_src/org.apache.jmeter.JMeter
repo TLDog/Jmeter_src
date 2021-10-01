@@ -1,0 +1,55 @@
+package org.apache.jmeter
+
+public class JMeter implements JmeterPlugin
+
+JMeter 主类，判断是否启动GUI，也可以直接命令运行
+
+开头有一个 ShutdowClient，主要作用就是发送shutdown指令给 non-GUI的JMeter实例
+用 DatagramSocket 传输指令
+try (DatagramSocket socket = new DatagramSocket()) {
+    byte[] buf = command.getBytes("ASCII");
+    InetAddress address = InetAddress.getByName("localhost");
+    DatagramPacket packet = new DatagramPacket(buf, buf.length, address,
+            port);
+    socket.send(packet);
+}
+
+接着开始定义指令集 LCOptionDescriptor
+
+跳过 starGui 先看 start 方法
+
+初始化 args parser
+CLArgsParser parser = new CLArgsParser(args, options);
+
+初始化 properties，load进 SecurityProvider
+initializeProperties(parser); // Also initialises JMeter logging
+SecurityProviderLoader.addSecurityProvider(JMeterUtils.getJMeterProperties());
+
+setProxy 根据入参配置proxy，如果有host，那就必须有 port 反之亦然
+else if (parser.getArgumentById(PROXY_HOST) != null || parser.getArgumentById(PROXY_PORT) != null) {
+    throw new IllegalUserActionException(JMeterUtils.getResString("proxy_cl_error"));// $NON-NLS-1$
+}
+
+再根据配置 updateClassLoader
+updatePath("search_paths",";", true); //$NON-NLS-1$//$NON-NLS-2$
+updatePath("user.classpath",File.pathSeparator, true);//$NON-NLS-1$
+updatePath("plugin_dependency_paths",";", false);//$NON-NLS-1$
+
+如果 parser.getArgumentById(SERVER_OPT) != null
+远程启动后台server
+RemoteJMeterEngineImpl.startServer(RmiUtils.getRmiRegistryPort()); // $NON-NLS-1$
+里面通过 LocateRegistry 绑定
+reg.rebind(JMETER_ENGINE_RMI_NAME, this);
+跑脚本文件
+startOptionalServers();
+
+判断是不是GUI启动
+else if (parser.getArgumentById(NONGUI_OPT) == null) { // not non-GUI => GUI
+startGui(testFile);
+startOptionalServers();
+}else{
+...
+startNonGui(testFile, jtlFile, remoteTest, reportAtEndOpt != null);
+startOptionalServers();
+}
+
